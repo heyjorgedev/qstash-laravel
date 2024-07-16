@@ -1,12 +1,12 @@
 <?php
 
-namespace VendorName\Skeleton\Commands;
+namespace HeyJorgeDev\QstashLaravel\Commands;
 
 use Illuminate\Console\Command;
 
-class SkeletonCommand extends Command
+class QstashLaravelCommand extends Command
 {
-    public $signature = 'skeleton';
+    public $signature = 'qstash-laravel';
 
     public $description = 'My command';
 
