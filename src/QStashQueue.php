@@ -17,12 +17,13 @@ class QStashQueue extends Queue implements QueueContract
         protected readonly string $defaultQueueName = 'default',
     ) {}
 
-    public function size($queue = null)
+    public function size($queue = null): int
     {
-        // TODO: Implement size() method.
+        // TODO: Implement
+        return 0;
     }
 
-    public function push($job, $data = '', $queue = null)
+    public function push($job, $data = '', $queue = null): void
     {
         $this->enqueueUsing(
             $job,
@@ -40,7 +41,7 @@ class QStashQueue extends Queue implements QueueContract
 
     public function pushRaw($payload, $queue = null, array $options = []) {}
 
-    public function later($delay, $job, $data = '', $queue = null)
+    public function later($delay, $job, $data = '', $queue = null): void
     {
         $this->enqueueUsing(
             $job,
@@ -56,7 +57,7 @@ class QStashQueue extends Queue implements QueueContract
         );
     }
 
-    public function pop($queue = null): void
+    public function pop($queue = null)
     {
         throw new FeatureNotSupportedException(
             'The QStash Queue doesn\'t support the pop method since it is a push driver to an http endpoint'
