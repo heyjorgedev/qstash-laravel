@@ -7,7 +7,7 @@ use RectorPrefix202407\Illuminate\Contracts\Queue\Queue as QueueContract;
 
 class QStashQueue extends Queue implements QueueContract
 {
-    public function __construct() {}
+    public function __construct(protected readonly string $defaultQueueName = 'default') {}
 
     public function size($queue = null)
     {
@@ -16,17 +16,30 @@ class QStashQueue extends Queue implements QueueContract
 
     public function push($job, $data = '', $queue = null)
     {
-        // TODO: Implement push() method.
+        $this->enqueueUsing(
+            $job,
+            $this->createPayload($job, $queue ?: $this->defaultQueueName, $data),
+            $queue,
+            null,
+            function ($payload, $queue) {
+                // TODO: Implement
+            }
+        );
     }
 
-    public function pushRaw($payload, $queue = null, array $options = [])
-    {
-        // TODO: Implement pushRaw() method.
-    }
+    public function pushRaw($payload, $queue = null, array $options = []) {}
 
     public function later($delay, $job, $data = '', $queue = null)
     {
-        // TODO: Implement later() method.
+        $this->enqueueUsing(
+            $job,
+            $this->createPayload($job, $queue ?: $this->defaultQueueName, $data),
+            $queue,
+            $delay,
+            function ($payload, $queue) {
+                // TODO: Implement
+            }
+        );
     }
 
     public function pop($queue = null)
