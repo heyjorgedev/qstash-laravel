@@ -2,8 +2,8 @@
 
 namespace HeyJorgeDev\QstashLaravel;
 
+use Illuminate\Contracts\Queue\Queue as QueueContract;
 use Illuminate\Queue\Queue;
-use RectorPrefix202407\Illuminate\Contracts\Queue\Queue as QueueContract;
 
 class QStashQueue extends Queue implements QueueContract
 {
