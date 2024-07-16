@@ -2,9 +2,9 @@
 
 namespace HeyJorgeDev\QstashLaravel\Tests;
 
+use HeyJorgeDev\QstashLaravel\QstashLaravelServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Orchestra\Testbench\TestCase as Orchestra;
-use HeyJorgeDev\QstashLaravel\QstashLaravelServiceProvider;
 
 class TestCase extends Orchestra
 {

@@ -2,9 +2,9 @@
 
 namespace HeyJorgeDev\QstashLaravel;
 
+use HeyJorgeDev\QstashLaravel\Commands\QstashLaravelCommand;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
-use HeyJorgeDev\QstashLaravel\Commands\QstashLaravelCommand;
 
 class QstashLaravelServiceProvider extends PackageServiceProvider
 {
