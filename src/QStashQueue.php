@@ -2,11 +2,11 @@
 
 namespace HeyJorgeDev\QstashLaravel;
 
-use _PHPStan_18cddd6e5\Nette\NotSupportedException;
 use HeyJorgeDev\QStash\Client;
 use HeyJorgeDev\QStash\ValueObjects\Message;
 use HeyJorgeDev\QStash\ValueObjects\MessageToPublish;
 use HeyJorgeDev\QStash\ValueObjects\Url;
+use HeyJorgeDev\QstashLaravel\Exceptions\FeatureNotSupportedException;
 use Illuminate\Contracts\Queue\Queue as QueueContract;
 use Illuminate\Queue\Queue;
 
@@ -58,7 +58,9 @@ class QStashQueue extends Queue implements QueueContract
 
     public function pop($queue = null): void
     {
-        throw new NotSupportedException('The QStash Queue doesn\'t support the pop method since it is a push driver to an http endpoint');
+        throw new FeatureNotSupportedException(
+            'The QStash Queue doesn\'t support the pop method since it is a push driver to an http endpoint'
+        );
     }
 
     protected function buildQStashMessage(array|string $payload): MessageToPublish
