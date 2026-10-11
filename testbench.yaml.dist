@@ -1,0 +1,5 @@
+laravel: '@testbench'
+
+providers:
+  - HeyJorgeDev\QstashLaravel\QStashServiceProvider
+  - Workbench\App\Providers\WorkbenchServiceProvider
