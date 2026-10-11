@@ -5,8 +5,10 @@ namespace HeyJorgeDev\QstashLaravel;
 use HeyJorgeDev\QstashLaravel\Http\Controllers\JobController;
 use HeyJorgeDev\QstashLaravel\Http\Middleware\VerifyJobSignature;
 use HeyJorgeDev\QstashLaravel\Http\Middleware\VerifySignature;
+use HeyJorgeDev\QstashLaravel\Jobs\QStashJob;
 use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\QueueManager;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
@@ -42,6 +44,7 @@ class QStashServiceProvider extends ServiceProvider
         });
 
         $this->registerRoutes();
+        $this->registerFailedJobLogger();
 
         PreventRequestsDuringMaintenance::except(trim(config('qstash.path'), '/').'/*');
 
@@ -64,5 +67,28 @@ class QStashServiceProvider extends ServiceProvider
         Route::post(config('qstash.path').'/{connection}/{queue}', JobController::class)
             ->middleware(VerifyJobSignature::class)
             ->name('qstash.job');
+    }
+
+    /**
+     * Record failed QStash jobs with the failed job provider.
+     *
+     * The queue:work command usually records failed jobs, but QStash jobs are run
+     * by the delivery route instead, so we record them ourselves. Jobs from any
+     * other connection are left alone so they are never recorded twice.
+     */
+    protected function registerFailedJobLogger(): void
+    {
+        $this->app['events']->listen(JobFailed::class, function (JobFailed $event) {
+            if (! $event->job instanceof QStashJob) {
+                return;
+            }
+
+            $this->app['queue.failer']->log(
+                $event->connectionName,
+                $event->job->getQueue(),
+                $event->job->getRawBody(),
+                $event->exception,
+            );
+        });
     }
 }
