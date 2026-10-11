@@ -24,6 +24,7 @@ class WorkbenchServiceProvider extends ServiceProvider
                 'next_signing_key' => 'sig_5ZB6DVzB1wjE8S6rZ7eenA8Pdnhs',
                 'endpoint' => 'http://127.0.0.1:18080',
                 'destination' => 'http://127.0.0.1:18001',
+                'retry_delay' => 500,
             ],
         ]);
     }

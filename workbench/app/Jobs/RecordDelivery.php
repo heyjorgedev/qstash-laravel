@@ -9,7 +9,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Throwable;
 
-class RecordAttempts implements ShouldQueue
+class RecordDelivery implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
 
@@ -30,8 +30,11 @@ class RecordAttempts implements ShouldQueue
     /**
      * Create a new job instance.
      */
-    public function __construct(public string $path, public bool $fail = false)
-    {
+    public function __construct(
+        public string $path,
+        public bool $fail = false,
+        public bool $crash = false,
+    ) {
         //
     }
 
@@ -40,10 +43,23 @@ class RecordAttempts implements ShouldQueue
      */
     public function handle(): void
     {
-        $this->record("attempt {$this->attempts()}");
+        $this->record([
+            'event' => 'attempt',
+            'attempt' => $this->attempts(),
+            'id' => $this->job->getJobId(),
+            'queue' => $this->job->getQueue(),
+        ]);
 
         if ($this->fail) {
             throw new Exception('Job failed.');
+        }
+
+        // Simulate the PHP process dying before Laravel could handle the job,
+        // which leaves QStash to deliver the very same message once again.
+        if ($this->crash && $this->attempts() === 1) {
+            http_response_code(500);
+
+            exit;
         }
     }
 
@@ -52,14 +68,14 @@ class RecordAttempts implements ShouldQueue
      */
     public function failed(?Throwable $exception): void
     {
-        $this->record('failed');
+        $this->record(['event' => 'failed']);
     }
 
     /**
-     * Append the given line to the job's log file.
+     * Append the given entry to the job's log file.
      */
-    protected function record(string $line): void
+    protected function record(array $entry): void
     {
-        file_put_contents($this->path, $line.PHP_EOL, FILE_APPEND);
+        file_put_contents($this->path, json_encode($entry).PHP_EOL, FILE_APPEND);
     }
 }

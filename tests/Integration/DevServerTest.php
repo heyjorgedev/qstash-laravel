@@ -2,9 +2,11 @@
 
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Queue;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
-use Workbench\App\Jobs\RecordAttempts;
+use Workbench\App\Jobs\RecordDelivery;
 
 uses()->group('integration');
 
@@ -67,24 +69,56 @@ afterEach(function () {
 });
 
 it('delivers jobs to the application', function () {
-    RecordAttempts::dispatch($this->path)->onConnection('qstash-dev');
+    $id = Queue::connection('qstash-dev')->push(new RecordDelivery($this->path));
 
-    expect(linesOf($this->path, 1))->toBe(['attempt 1']);
+    expect(deliveriesOf($this->path, 1))->toBe([
+        ['event' => 'attempt', 'attempt' => 1, 'id' => $id, 'queue' => 'default'],
+    ]);
+});
+
+it('delivers jobs on the given queue', function () {
+    Queue::connection('qstash-dev')->pushOn('emails', new RecordDelivery($this->path));
+
+    expect(deliveriesOf($this->path, 1)[0]['queue'])->toBe('emails');
 });
 
 it('delivers delayed jobs once the delay has passed', function () {
     $dispatchedAt = microtime(true);
 
-    RecordAttempts::dispatch($this->path)->onConnection('qstash-dev')->delay(2);
+    Queue::connection('qstash-dev')->later(2, new RecordDelivery($this->path));
 
-    expect(linesOf($this->path, 1))->toBe(['attempt 1'])
+    expect(deliveriesOf($this->path, 1)[0]['attempt'])->toBe(1)
         ->and(microtime(true) - $dispatchedAt)->toBeGreaterThan(1);
 });
 
 it('retries failing jobs before failing them', function () {
-    RecordAttempts::dispatch($this->path, fail: true)->onConnection('qstash-dev');
+    Queue::connection('qstash-dev')->push(new RecordDelivery($this->path, fail: true));
 
-    expect(linesOf($this->path, 3))->toBe(['attempt 1', 'attempt 2', 'failed']);
+    $deliveries = deliveriesOf($this->path, 3);
+
+    expect(array_column($deliveries, 'event'))->toBe(['attempt', 'attempt', 'failed'])
+        ->and(array_column($deliveries, 'attempt'))->toBe([1, 2]);
+});
+
+it('counts qstash redeliveries as attempts', function () {
+    $id = Queue::connection('qstash-dev')->push(new RecordDelivery($this->path, crash: true));
+
+    $deliveries = deliveriesOf($this->path, 2);
+
+    expect(array_column($deliveries, 'attempt'))->toBe([1, 2])
+        ->and(array_column($deliveries, 'id'))->toBe([$id, $id]);
+});
+
+it('dispatches chained jobs from delivered jobs', function () {
+    Bus::chain([
+        new RecordDelivery($this->path),
+        new RecordDelivery($this->path),
+    ])->onConnection('qstash-dev')->dispatch();
+
+    $deliveries = deliveriesOf($this->path, 2);
+
+    expect(array_column($deliveries, 'attempt'))->toBe([1, 1])
+        ->and($deliveries[0]['id'])->not->toBe($deliveries[1]['id']);
 });
 
 function listening(string $url): bool
@@ -130,7 +164,7 @@ function waitUntilReady(string $url, Process $server, int $timeout = 60): void
     }
 }
 
-function linesOf(string $path, int $count, int $timeout = 15): array
+function deliveriesOf(string $path, int $count, int $timeout = 15): array
 {
     $deadline = microtime(true) + $timeout;
 
@@ -144,5 +178,5 @@ function linesOf(string $path, int $count, int $timeout = 15): array
         usleep(100_000);
     } while (microtime(true) < $deadline);
 
-    return $lines;
+    return array_map(fn ($line) => json_decode($line, true), $lines);
 }
