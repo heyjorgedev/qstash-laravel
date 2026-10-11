@@ -32,6 +32,8 @@ class QStashConnector implements ConnectorInterface
             $config['queue'] ?? 'default',
             $config['endpoint'] ?? 'https://qstash.upstash.io',
             $config['destination'] ?? null,
+            $config['retries'] ?? null,
+            isset($config['retry_delay']) ? (string) $config['retry_delay'] : null,
             $config['after_commit'] ?? null,
         );
     }

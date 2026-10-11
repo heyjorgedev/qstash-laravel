@@ -23,6 +23,8 @@ class QStashQueue extends Queue implements QueueContract
         protected string $default = 'default',
         protected string $endpoint = 'https://qstash.upstash.io',
         protected ?string $destination = null,
+        protected ?int $retries = null,
+        protected ?string $retryDelay = null,
         ?bool $dispatchAfterCommit = false,
     ) {
         $this->dispatchAfterCommit = $dispatchAfterCommit;
@@ -180,6 +182,10 @@ class QStashQueue extends Queue implements QueueContract
     {
         return $this->http
             ->withToken($this->token)
+            ->withHeaders(array_filter([
+                'Upstash-Retries' => $this->retries,
+                'Upstash-Retry-Delay' => $this->retryDelay,
+            ], fn ($value) => ! is_null($value)))
             ->when($delay, fn (PendingRequest $request) => $request->withHeaders([
                 'Upstash-Not-Before' => $this->availableAt($delay),
             ]))

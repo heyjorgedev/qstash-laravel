@@ -62,6 +62,8 @@ Add a `qstash` connection to your `config/queue.php` file:
     'queue' => env('QSTASH_QUEUE', 'default'),
     'endpoint' => env('QSTASH_URL', 'https://qstash.upstash.io'),
     'destination' => env('QSTASH_DESTINATION_URL'),
+    'retries' => env('QSTASH_RETRIES'),
+    'retry_delay' => env('QSTASH_RETRY_DELAY'),
     'after_commit' => false,
 ],
 ```
@@ -84,6 +86,8 @@ The `destination` option is the public base URL QStash should call. It defaults 
 https://example.com/qstash/qstash/default
 ```
 
+The `retries` and `retry_delay` options are sent to QStash as the `Upstash-Retries` and `Upstash-Retry-Delay` headers, and control how QStash redelivers a job when your application fails to respond successfully. The delay is in milliseconds and may be a QStash expression such as `pow(2, retried) * 1000`. When omitted, your QStash plan's defaults apply.
+
 ## Usage
 
 Dispatch jobs exactly as you would with any other queue driver:
@@ -102,7 +106,7 @@ Delayed jobs use QStash's `Upstash-Not-Before` header. The maximum delay depends
 
 Laravel's retry semantics apply. When a job is released, either manually or via `$backoff` after an exception, the driver publishes it to QStash again with the appropriate delay.
 
-The endpoint responds with a `2xx` status once Laravel has handled the job, whether it succeeded, was released or failed, so QStash does not duplicate Laravel's retries. QStash's own retries only kick in if a request fails without Laravel handling it, such as when the PHP process crashes or times out. Those deliveries count towards the job's attempts.
+The endpoint responds with a `2xx` status once Laravel has handled the job, whether it succeeded, was released or failed, so QStash does not duplicate Laravel's retries. QStash's own retries only kick in if a request fails without Laravel handling it, such as when the PHP process crashes or times out. Those deliveries count towards the job's attempts, and their timing can be tuned with the `retries` and `retry_delay` options.
 
 ## Things to Know
 

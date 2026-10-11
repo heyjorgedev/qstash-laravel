@@ -22,6 +22,8 @@ describe('when qstash accepts the message', function () {
                 && $request->hasHeader('Authorization', 'Bearer qstash-token')
                 && $request->hasHeader('Content-Type', 'application/json')
                 && ! $request->hasHeader('Upstash-Not-Before')
+                && ! $request->hasHeader('Upstash-Retries')
+                && ! $request->hasHeader('Upstash-Retry-Delay')
                 && $request['displayName'] === TestJob::class;
         });
     });
@@ -40,6 +42,18 @@ describe('when qstash accepts the message', function () {
         Http::assertSent(fn (Request $request) => $request->hasHeader(
             'Upstash-Not-Before', (string) Carbon::now()->addSeconds(60)->getTimestamp()
         ));
+    });
+
+    it('sends the configured retry settings', function () {
+        config([
+            'queue.connections.qstash.retries' => 0,
+            'queue.connections.qstash.retry_delay' => 'pow(2, retried) * 1000',
+        ]);
+
+        Queue::push(new TestJob);
+
+        Http::assertSent(fn (Request $request) => $request->hasHeader('Upstash-Retries', '0')
+            && $request->hasHeader('Upstash-Retry-Delay', 'pow(2, retried) * 1000'));
     });
 
     it('uses the configured endpoint and destination', function () {
