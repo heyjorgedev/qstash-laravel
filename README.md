@@ -7,6 +7,8 @@
 
 A Laravel queue driver for [Upstash QStash](https://upstash.com/docs/qstash). Dispatch jobs as you normally would and let QStash deliver them back to your application over HTTP, with no `queue:work` process to run.
 
+The package also includes a `QStash` facade to [publish messages](#publishing-messages) to any URL, such as another service or a customer's webhook endpoint, and a middleware to [receive messages](#receiving-messages) signed by QStash on any route.
+
 ## How It Works
 
 QStash is a push-based HTTP queue. Instead of a worker polling for jobs, QStash calls your application:
@@ -41,17 +43,29 @@ This publishes `config/qstash.php`:
 
 ```php
 return [
-    /*
-    | The URI path QStash will deliver jobs to. Jobs are delivered to
-    | "{path}/{connection}/{queue}" on your application.
-    */
+    'token' => env('QSTASH_TOKEN'),
+    'current_signing_key' => env('QSTASH_CURRENT_SIGNING_KEY'),
+    'next_signing_key' => env('QSTASH_NEXT_SIGNING_KEY'),
+    'endpoint' => env('QSTASH_URL', 'https://qstash.upstash.io'),
+
+    // Jobs are delivered to "{path}/{connection}/{queue}" on your application.
     'path' => env('QSTASH_PATH', 'qstash'),
 ];
 ```
 
 ## Configuration
 
-Add a `qstash` connection to your `config/queue.php` file:
+Set your credentials, found in the [Upstash console](https://console.upstash.com/qstash), in your `.env` file:
+
+```ini
+QUEUE_CONNECTION=qstash
+
+QSTASH_TOKEN=
+QSTASH_CURRENT_SIGNING_KEY=
+QSTASH_NEXT_SIGNING_KEY=
+```
+
+Then add a `qstash` connection to your `config/queue.php` file. Connections use the credentials from `config/qstash.php` unless they define their own, so the connection may be as small as `['driver' => 'qstash']`. Every option is shown below:
 
 ```php
 'qstash' => [
@@ -73,16 +87,6 @@ Add a `qstash` connection to your `config/queue.php` file:
     ],
     'after_commit' => false,
 ],
-```
-
-Then set your credentials, found in the [Upstash console](https://console.upstash.com/qstash), in your `.env` file:
-
-```ini
-QUEUE_CONNECTION=qstash
-
-QSTASH_TOKEN=
-QSTASH_CURRENT_SIGNING_KEY=
-QSTASH_NEXT_SIGNING_KEY=
 ```
 
 The `endpoint` option is the QStash API base URL. Change it if your QStash instance lives in another region (for example, `https://qstash-us-east-1.upstash.io`) or when using the local development server. Each region has its own token and signing keys, so always use the credentials belonging to the region of your `endpoint`. To publish through several regions, define a connection per region.
@@ -127,6 +131,57 @@ Delayed jobs use QStash's `Upstash-Not-Before` header. The maximum delay depends
 Laravel's retry semantics apply. When a job is released, either manually or via `$backoff` after an exception, the driver publishes it to QStash again with the appropriate delay.
 
 The endpoint responds with a `2xx` status once Laravel has handled the job, whether it succeeded, was released or failed, so QStash does not duplicate Laravel's retries. QStash's own retries only kick in if a request fails without Laravel handling it, such as when the PHP process crashes or times out. Those deliveries count towards the job's attempts, and their timing can be tuned with the `retries` and `retry_delay` options.
+
+## Publishing Messages
+
+Beyond queued jobs, you may publish a message to any URL using the `QStash` facade. QStash delivers it with retries, which makes it a reliable way to call another service or send webhooks. Arrays are sent as JSON, and the QStash message ID is returned:
+
+```php
+use HeyJorgeDev\QstashLaravel\Facades\QStash;
+
+$messageId = QStash::publish('https://billing.example.com/invoices', [
+    'invoice_id' => $invoice->id,
+]);
+```
+
+The message may be customized before it is published:
+
+```php
+QStash::withHeaders(['X-Signature' => $signature])
+    ->delay(now()->addHour())
+    ->retries(5, delay: 'pow(2, retried) * 1000')
+    ->timeout(30)
+    ->callback(route('webhooks.delivered'))
+    ->failureCallback(route('webhooks.failed'))
+    ->deduplicate("invoice-paid-{$invoice->id}")
+    ->flowControl('customer-webhooks', parallelism: 10)
+    ->publish($customer->webhook_url, $payload);
+```
+
+| Method | Description |
+| --- | --- |
+| `withHeaders($headers)` | Headers QStash includes in its request to the destination. |
+| `withBody($content, $contentType)` | Send a raw body, such as XML, instead of JSON. |
+| `method($method)` | The HTTP method QStash uses to call the destination. Defaults to `POST`. |
+| `delay($delay)` | Seconds, or a `DateTimeInterface`, to delay delivery by. |
+| `retries($times, $delay)` | How many times to retry, and the milliseconds (or expression) to wait in between. |
+| `timeout($timeout)` | Seconds, or a duration such as `5m`, to wait for the destination to respond. |
+| `callback($url)` | A URL QStash calls with the response of the destination. |
+| `failureCallback($url)` | A URL QStash calls once every attempt has failed. |
+| `deduplicate($id)` / `deduplicateByContent()` | Ignore duplicate messages within QStash's deduplication window. |
+| `flowControl($key, $parallelism, $rate, $period)` | Limit how many messages sharing a key are delivered at once, or per period. |
+
+Since the facade uses Laravel's HTTP client, you may use `Http::fake()` in your tests to fake publishing.
+
+## Receiving Messages
+
+Callbacks, schedules, and messages you publish to your own application are signed by QStash. To verify the signature on any route, use the `qstash` middleware. Requests with a missing or invalid signature receive a `403` response:
+
+```php
+Route::post('/webhooks/delivered', DeliveredWebhookController::class)->middleware('qstash');
+```
+
+The signature covers the URL QStash called. If your application runs behind a load balancer or proxy, make sure [trusted proxies](https://laravel.com/docs/requests#configuring-trusted-proxies) are configured so the URL your application sees matches the URL you published to. Like the job route, these routes should not be protected by CSRF verification.
 
 ## Maintenance Mode
 

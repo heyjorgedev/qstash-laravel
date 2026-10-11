@@ -12,6 +12,10 @@ class TestCase extends Orchestra
     protected function defineEnvironment($app)
     {
         $app['config']->set('app.url', 'https://example.com');
+        $app['config']->set('qstash.token', 'default-token');
+        $app['config']->set('qstash.current_signing_key', 'current-signing-key');
+        $app['config']->set('qstash.next_signing_key', 'next-signing-key');
+        $app['config']->set('qstash.endpoint', 'https://qstash.upstash.io');
         $app['config']->set('queue.default', 'qstash');
         $app['config']->set('queue.failed.driver', 'null');
         $app['config']->set('queue.connections.qstash', [

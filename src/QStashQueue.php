@@ -5,7 +5,6 @@ namespace HeyJorgeDev\QstashLaravel;
 use HeyJorgeDev\QstashLaravel\Jobs\QStashJob;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Contracts\Queue\Queue as QueueContract;
-use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\Queue;
 use LogicException;
@@ -16,13 +15,10 @@ class QStashQueue extends Queue implements QueueContract
      * Create a new QStash queue instance.
      */
     public function __construct(
-        protected HttpFactory $http,
-        protected string $token,
-        protected Receiver $receiver,
+        protected QStash $qstash,
         protected string $default = 'default',
-        protected string $endpoint = 'https://qstash.upstash.io',
         protected ?string $destination = null,
-        protected array $headers = [],
+        protected array $options = [],
         ?bool $dispatchAfterCommit = false,
     ) {
         $this->dispatchAfterCommit = $dispatchAfterCommit;
@@ -172,6 +168,9 @@ class QStashQueue extends Queue implements QueueContract
     /**
      * Publish a payload to QStash.
      *
+     * QStash waits for as long as the job's timeout before considering a delivery
+     * failed, so long running jobs are not delivered again while still running.
+     *
      * @param  \DateTimeInterface|\DateInterval|int  $delay
      * @return string
      *
@@ -179,32 +178,14 @@ class QStashQueue extends Queue implements QueueContract
      */
     protected function publish(string $payload, string $queue, $delay = 0)
     {
-        return $this->http
-            ->withToken($this->token)
-            ->withHeaders($this->headersFor($payload, $delay))
-            ->withBody($payload, 'application/json')
-            ->post(rtrim($this->endpoint, '/').'/v2/publish/'.$this->destination($queue))
-            ->throw()
-            ->json('messageId');
-    }
-
-    /**
-     * Get the QStash headers for the given payload.
-     *
-     * QStash waits for as long as the job's timeout before considering a delivery
-     * failed, so long running jobs are not delivered again while still running.
-     *
-     * @param  \DateTimeInterface|\DateInterval|int  $delay
-     * @return array<string, mixed>
-     */
-    protected function headersFor(string $payload, $delay): array
-    {
         $timeout = json_decode($payload, true)['timeout'] ?? null;
 
-        return array_filter([
-            'Upstash-Not-Before' => $delay ? $this->availableAt($delay) : null,
-            'Upstash-Timeout' => $timeout ? "{$timeout}s" : null,
-        ]) + $this->headers;
+        return $this->qstash->message()
+            ->withOptions($this->options)
+            ->when($delay, fn (PendingMessage $message) => $message->delay($delay))
+            ->when($timeout, fn (PendingMessage $message) => $message->timeout($timeout))
+            ->withBody($payload, 'application/json')
+            ->publish($this->destination($queue));
     }
 
     /**
@@ -232,10 +213,10 @@ class QStashQueue extends Queue implements QueueContract
     }
 
     /**
-     * Get the receiver used to verify incoming requests.
+     * Get the underlying QStash client.
      */
-    public function receiver(): Receiver
+    public function getQStash(): QStash
     {
-        return $this->receiver;
+        return $this->qstash;
     }
 }

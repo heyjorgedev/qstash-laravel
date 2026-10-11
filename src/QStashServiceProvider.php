@@ -3,10 +3,12 @@
 namespace HeyJorgeDev\QstashLaravel;
 
 use HeyJorgeDev\QstashLaravel\Http\Controllers\JobController;
+use HeyJorgeDev\QstashLaravel\Http\Middleware\VerifyJobSignature;
 use HeyJorgeDev\QstashLaravel\Http\Middleware\VerifySignature;
 use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Queue\QueueManager;
+use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -18,6 +20,10 @@ class QStashServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/qstash.php', 'qstash');
+
+        $this->app->singleton(QStash::class, fn ($app) => QStash::fromConfig(
+            $app->make(HttpFactory::class), $app['config']['qstash']
+        ));
     }
 
     /**
@@ -27,8 +33,12 @@ class QStashServiceProvider extends ServiceProvider
     {
         $this->callAfterResolving('queue', function (QueueManager $manager) {
             $manager->addConnector('qstash', fn () => new QStashConnector(
-                $this->app->make(HttpFactory::class)
+                $this->app->make(HttpFactory::class), $this->app['config']['qstash']
             ));
+        });
+
+        $this->callAfterResolving('router', function (Router $router) {
+            $router->aliasMiddleware('qstash', VerifySignature::class);
         });
 
         $this->registerRoutes();
@@ -52,7 +62,7 @@ class QStashServiceProvider extends ServiceProvider
         }
 
         Route::post(config('qstash.path').'/{connection}/{queue}', JobController::class)
-            ->middleware(VerifySignature::class)
+            ->middleware(VerifyJobSignature::class)
             ->name('qstash.job');
     }
 }

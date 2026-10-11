@@ -77,7 +77,10 @@
         "laravel": {
             "providers": [
                 "HeyJorgeDev\\QstashLaravel\\QStashServiceProvider"
-            ]
+            ],
+            "aliases": {
+                "QStash": "HeyJorgeDev\\QstashLaravel\\Facades\\QStash"
+            }
         }
     },
     "minimum-stability": "dev",

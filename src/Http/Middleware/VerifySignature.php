@@ -3,10 +3,8 @@
 namespace HeyJorgeDev\QstashLaravel\Http\Middleware;
 
 use Closure;
-use HeyJorgeDev\QstashLaravel\QStashQueue;
-use Illuminate\Contracts\Config\Repository as Config;
+use HeyJorgeDev\QstashLaravel\QStash;
 use Illuminate\Http\Request;
-use Illuminate\Queue\QueueManager;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
@@ -15,31 +13,24 @@ class VerifySignature
     /**
      * Create a new middleware instance.
      */
-    public function __construct(
-        protected QueueManager $manager,
-        protected Config $config,
-    ) {
+    public function __construct(protected QStash $qstash)
+    {
         //
     }
 
     /**
-     * Handle the incoming request.
+     * Ensure the incoming request was signed by QStash.
      *
      * @throws AccessDeniedHttpException
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $connection = $request->route('connection');
-
-        abort_unless($this->config->get("queue.connections.{$connection}.driver") === 'qstash', 404);
-
-        /** @var QStashQueue $queue */
-        $queue = $this->manager->connection($connection);
-
-        $verified = $queue->receiver()->verify(
+        // QStash signs the URL exactly as it was published, so we will use the raw
+        // request URI instead of the full URL, which normalizes the query string.
+        $verified = $this->qstash->verify(
             (string) $request->header('Upstash-Signature'),
             $request->getContent(),
-            $queue->destination($request->route('queue')),
+            $request->getSchemeAndHttpHost().$request->getRequestUri(),
         );
 
         if (! $verified) {
