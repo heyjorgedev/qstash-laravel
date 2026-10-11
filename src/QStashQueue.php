@@ -23,6 +23,30 @@ class QStashQueue extends Queue implements QueueContract
         return 0;
     }
 
+    public function pendingSize($queue = null): int
+    {
+        // TODO: Implement
+        return 0;
+    }
+
+    public function delayedSize($queue = null): int
+    {
+        // TODO: Implement
+        return 0;
+    }
+
+    public function reservedSize($queue = null): int
+    {
+        // TODO: Implement
+        return 0;
+    }
+
+    public function creationTimeOfOldestPendingJob($queue = null): ?int
+    {
+        // TODO: Implement
+        return null;
+    }
+
     public function push($job, $data = '', $queue = null): void
     {
         $this->enqueueUsing(
