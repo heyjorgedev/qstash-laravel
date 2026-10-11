@@ -1,10 +1,12 @@
 {
     "name": "heyjorgedev/qstash-laravel",
-    "description": "This is my package qstash-laravel",
+    "description": "A Laravel queue driver for Upstash QStash",
     "keywords": [
-        "HeyJorgeDev",
         "laravel",
-        "qstash-laravel"
+        "queue",
+        "qstash",
+        "upstash",
+        "serverless"
     ],
     "homepage": "https://github.com/heyjorgedev/qstash-laravel",
     "license": "MIT",
@@ -17,9 +19,11 @@
     ],
     "require": {
         "php": "^8.3",
-        "heyjorgedev/qstash-php": "dev-main",
         "illuminate/contracts": "^12.0||^13.0",
-        "spatie/laravel-package-tools": "^1.93"
+        "illuminate/http": "^12.0||^13.0",
+        "illuminate/queue": "^12.0||^13.0",
+        "illuminate/routing": "^12.0||^13.0",
+        "illuminate/support": "^12.0||^13.0"
     },
     "require-dev": {
         "larastan/larastan": "^3.0",
@@ -35,8 +39,7 @@
     },
     "autoload": {
         "psr-4": {
-            "HeyJorgeDev\\QstashLaravel\\": "src/",
-            "HeyJorgeDev\\QstashLaravel\\Database\\Factories\\": "database/factories/"
+            "HeyJorgeDev\\QstashLaravel\\": "src/"
         }
     },
     "autoload-dev": {
@@ -47,7 +50,6 @@
     },
     "scripts": {
         "post-autoload-dump": "@composer run prepare",
-        "clear": "@php vendor/bin/testbench package:purge-qstash-laravel --ansi",
         "prepare": "@php vendor/bin/testbench package:discover --ansi",
         "build": [
             "@composer run prepare",
@@ -67,18 +69,14 @@
         "sort-packages": true,
         "allow-plugins": {
             "pestphp/pest-plugin": true,
-            "phpstan/extension-installer": true,
-            "php-http/discovery": true
+            "phpstan/extension-installer": true
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "HeyJorgeDev\\QstashLaravel\\QstashLaravelServiceProvider"
-            ],
-            "aliases": {
-                "QstashLaravel": "HeyJorgeDev\\QstashLaravel\\Facades\\QstashLaravel"
-            }
+                "HeyJorgeDev\\QstashLaravel\\QStashServiceProvider"
+            ]
         }
     },
     "minimum-stability": "dev",

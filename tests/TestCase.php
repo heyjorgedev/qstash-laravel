@@ -2,35 +2,29 @@
 
 namespace HeyJorgeDev\QstashLaravel\Tests;
 
-use HeyJorgeDev\QstashLaravel\QstashLaravelServiceProvider;
-use Illuminate\Database\Eloquent\Factories\Factory;
+use HeyJorgeDev\QstashLaravel\QStashServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 class TestCase extends Orchestra
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        Factory::guessFactoryNamesUsing(
-            fn (string $modelName) => 'HeyJorgeDev\\QstashLaravel\\Database\\Factories\\'.class_basename($modelName).'Factory'
-        );
-    }
-
     protected function getPackageProviders($app)
     {
         return [
-            QstashLaravelServiceProvider::class,
+            QStashServiceProvider::class,
         ];
     }
 
-    public function getEnvironmentSetUp($app)
+    protected function defineEnvironment($app)
     {
-        config()->set('database.default', 'testing');
-
-        /*
-        $migration = include __DIR__.'/../database/migrations/create_qstash-laravel_table.php.stub';
-        $migration->up();
-        */
+        $app['config']->set('app.url', 'https://example.com');
+        $app['config']->set('queue.default', 'qstash');
+        $app['config']->set('queue.failed.driver', 'null');
+        $app['config']->set('queue.connections.qstash', [
+            'driver' => 'qstash',
+            'token' => 'qstash-token',
+            'current_signing_key' => 'current-signing-key',
+            'next_signing_key' => 'next-signing-key',
+            'queue' => 'default',
+        ]);
     }
 }
