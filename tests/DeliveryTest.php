@@ -3,9 +3,12 @@
 use HeyJorgeDev\QstashLaravel\Tests\Fixtures\TestJob;
 use Illuminate\Http\Client\Request;
 use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Failed\FailedJobProviderInterface;
+use Illuminate\Queue\Jobs\SyncJob;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
+use Mockery\MockInterface;
 
 const DESTINATION = 'https://example.com/qstash/qstash/default';
 
@@ -120,4 +123,29 @@ it('fails jobs that exceeded their attempts', function () {
 
     Event::assertDispatched(JobFailed::class);
     Http::assertNothingSent();
+});
+
+it('records failed jobs with the failed job provider', function () {
+    $body = payload(new TestJob(fail: true), ['attempts' => 2]);
+
+    $this->instance('queue.failer', Mockery::mock(FailedJobProviderInterface::class, fn (MockInterface $failer) => $failer
+        ->shouldReceive('log')
+        ->once()
+        ->withArgs(fn ($connection, $queue, $payload, $exception) => $connection === 'qstash'
+            && $queue === 'default'
+            && $payload === $body
+            && $exception->getMessage() === 'Job failed.')));
+
+    deliver($body)->assertNoContent();
+
+    expect(TestJob::$handled)->toBe([3]);
+});
+
+it('does not record failed jobs from other connections', function () {
+    $this->instance('queue.failer', Mockery::mock(FailedJobProviderInterface::class, fn (MockInterface $failer) => $failer
+        ->shouldNotReceive('log')));
+
+    $job = new SyncJob(app(), json_encode(['job' => 'Missing', 'data' => []]), 'sync', 'default');
+
+    event(new JobFailed('sync', $job, new Exception('Job failed.')));
 });
