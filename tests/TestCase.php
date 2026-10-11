@@ -2,17 +2,12 @@
 
 namespace HeyJorgeDev\QstashLaravel\Tests;
 
-use HeyJorgeDev\QstashLaravel\QStashServiceProvider;
+use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 class TestCase extends Orchestra
 {
-    protected function getPackageProviders($app)
-    {
-        return [
-            QStashServiceProvider::class,
-        ];
-    }
+    use WithWorkbench;
 
     protected function defineEnvironment($app)
     {

@@ -130,6 +130,12 @@ QStash cannot reach `localhost`, so you have two options:
 composer test
 ```
 
+The integration tests deliver real jobs through the local QStash development server to a workbench application. They start both servers themselves on ports `18080` and `18001`, and require Node.js (`npx`):
+
+```bash
+composer test-integration
+```
+
 ## Changelog
 
 Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.
