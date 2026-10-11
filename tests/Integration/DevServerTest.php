@@ -1,8 +1,10 @@
 <?php
 
+use HeyJorgeDev\QstashLaravel\QStash;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
@@ -153,6 +155,36 @@ it('dispatches chained jobs from delivered jobs', function () {
     expect(array_column($deliveries, 'attempt'))->toBe([1, 1])
         ->and($deliveries[0]['id'])->not->toBe($deliveries[1]['id']);
 });
+
+it('publishes messages to any url', function () {
+    qstash()->withHeaders(['X-Webhook' => 'invoice.paid'])->publish(recordingUrl($this->path), ['id' => 42]);
+
+    expect(deliveriesOf($this->path, 1))->toBe([
+        ['body' => '{"id":42}', 'webhook' => 'invoice.paid'],
+    ]);
+});
+
+it('calls back with the response of the destination', function () {
+    qstash()->callback(recordingUrl($callback = $this->path.'-callback'))->publish(recordingUrl($this->path), ['id' => 42]);
+
+    expect(deliveriesOf($callback, 1))->toHaveCount(1);
+
+    @unlink($callback);
+});
+
+it('rejects requests that are not signed by qstash', function () {
+    expect(Http::post(recordingUrl($this->path), ['id' => 42])->status())->toBe(403);
+});
+
+function qstash(): QStash
+{
+    return QStash::fromConfig(app(Factory::class), config('queue.connections.qstash-dev'));
+}
+
+function recordingUrl(string $path): string
+{
+    return 'http://127.0.0.1:18001/webhooks/record?log='.basename($path);
+}
 
 function listening(string $url): bool
 {

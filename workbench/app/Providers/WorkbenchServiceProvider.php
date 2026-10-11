@@ -2,6 +2,7 @@
 
 namespace Workbench\App\Providers;
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -26,6 +27,10 @@ class WorkbenchServiceProvider extends ServiceProvider
         ];
 
         config([
+            'qstash.token' => $connection['token'],
+            'qstash.current_signing_key' => $connection['current_signing_key'],
+            'qstash.next_signing_key' => $connection['next_signing_key'],
+            'qstash.endpoint' => $connection['endpoint'],
             'queue.failed.driver' => 'null',
             'queue.connections.qstash-dev' => $connection,
             'queue.connections.qstash-dev-serial' => [
@@ -41,5 +46,12 @@ class WorkbenchServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Route::view('/', 'welcome');
+
+        Route::post('/webhooks/record', function (Request $request) {
+            file_put_contents(sys_get_temp_dir().'/'.basename($request->query('log')), json_encode([
+                'body' => $request->getContent(),
+                'webhook' => $request->header('X-Webhook'),
+            ]).PHP_EOL, FILE_APPEND);
+        })->middleware('qstash');
     }
 }
