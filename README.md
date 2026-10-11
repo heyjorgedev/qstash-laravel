@@ -64,6 +64,13 @@ Add a `qstash` connection to your `config/queue.php` file:
     'destination' => env('QSTASH_DESTINATION_URL'),
     'retries' => env('QSTASH_RETRIES'),
     'retry_delay' => env('QSTASH_RETRY_DELAY'),
+    'timeout' => env('QSTASH_TIMEOUT'),
+    'flow_control' => [
+        'key' => env('QSTASH_FLOW_CONTROL_KEY'),
+        'parallelism' => env('QSTASH_PARALLELISM'),
+        'rate' => env('QSTASH_RATE'),
+        'period' => env('QSTASH_PERIOD'),
+    ],
     'after_commit' => false,
 ],
 ```
@@ -78,7 +85,7 @@ QSTASH_CURRENT_SIGNING_KEY=
 QSTASH_NEXT_SIGNING_KEY=
 ```
 
-The `endpoint` option is the QStash API base URL. Change it if your QStash instance lives in another region (for example, `https://qstash-us-east-1.upstash.io`) or when using the local development server.
+The `endpoint` option is the QStash API base URL. Change it if your QStash instance lives in another region (for example, `https://qstash-us-east-1.upstash.io`) or when using the local development server. Each region has its own token and signing keys, so always use the credentials belonging to the region of your `endpoint`. To publish through several regions, define a connection per region.
 
 The `destination` option is the public base URL QStash should call. It defaults to your `app.url`. Jobs are delivered to `{destination}/{path}/{connection}/{queue}`, for example:
 
@@ -87,6 +94,19 @@ https://example.com/qstash/qstash/default
 ```
 
 The `retries` and `retry_delay` options are sent to QStash as the `Upstash-Retries` and `Upstash-Retry-Delay` headers, and control how QStash redelivers a job when your application fails to respond successfully. The delay is in milliseconds and may be a QStash expression such as `pow(2, retried) * 1000`. When omitted, your QStash plan's defaults apply.
+
+The `timeout` option is how long, in seconds, QStash waits for your application to respond before considering a delivery failed. A job's own `$timeout` property takes precedence. See [Long-Running Jobs](#long-running-jobs).
+
+### Flow Control
+
+QStash delivers jobs as fast as it can, so dispatching thousands of jobs at once results in thousands of requests competing with your users for PHP workers. Use the `flow_control` option to limit how many jobs are delivered at the same time (`parallelism`), and how many are delivered per `period` (`rate`). A `key` and at least one limit are required:
+
+```ini
+QSTASH_FLOW_CONTROL_KEY=my-app
+QSTASH_PARALLELISM=10
+```
+
+Every connection using the same key shares the same limits. To limit queues independently, define a connection per queue, each with its own key.
 
 ## Usage
 
@@ -108,9 +128,18 @@ Laravel's retry semantics apply. When a job is released, either manually or via 
 
 The endpoint responds with a `2xx` status once Laravel has handled the job, whether it succeeded, was released or failed, so QStash does not duplicate Laravel's retries. QStash's own retries only kick in if a request fails without Laravel handling it, such as when the PHP process crashes or times out. Those deliveries count towards the job's attempts, and their timing can be tuned with the `retries` and `retry_delay` options.
 
+## Maintenance Mode
+
+Like a queue worker, the driver does not run jobs while your application is down for maintenance. Jobs delivered during maintenance are handed back to QStash to be delivered again a minute later, without counting as an attempt. The delivery route is excluded from the maintenance mode middleware automatically.
+
+## Long-Running Jobs
+
+Jobs run inside an HTTP request, so they are bound by every timeout along the way: QStash's, your load balancer's or proxy's, and PHP's `max_execution_time`. When QStash stops waiting before the job is done, it considers the delivery failed and delivers the job again while the first attempt is still running.
+
+To avoid this, the driver asks QStash to wait for as long as the job's `$timeout` (or the connection's `timeout`), up to the maximum allowed by your QStash plan. Make sure your proxy and PHP limits are at least as long, and consider `ShouldBeUnique` or the `WithoutOverlapping` middleware for jobs that must never run twice concurrently. The job `$timeout` is not enforced by the driver, since there is no `pcntl` alarm in an HTTP context. Jobs that run for many minutes belong on a different queue connection.
+
 ## Things to Know
 
-- **Execution time.** Jobs run inside an HTTP request, so they are bound by your web server and PHP `max_execution_time` limits, as well as QStash's request timeout for your plan. The job `$timeout` property is not enforced, since there is no `pcntl` alarm in an HTTP context. Long-running jobs belong on a different queue connection.
 - **Queue size.** `Queue::size()` and related methods always return `0`, as QStash does not expose these counts for published messages.
 - **Middleware.** The route is registered without the `web` middleware group, so CSRF protection does not apply. Do not put it behind authentication: the signature is the authentication.
 - **Invalid signatures.** Requests with a missing or invalid signature receive a `403` response.

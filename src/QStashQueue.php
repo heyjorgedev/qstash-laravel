@@ -6,7 +6,6 @@ use HeyJorgeDev\QstashLaravel\Jobs\QStashJob;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Contracts\Queue\Queue as QueueContract;
 use Illuminate\Http\Client\Factory as HttpFactory;
-use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\Queue;
 use LogicException;
@@ -23,8 +22,7 @@ class QStashQueue extends Queue implements QueueContract
         protected string $default = 'default',
         protected string $endpoint = 'https://qstash.upstash.io',
         protected ?string $destination = null,
-        protected ?int $retries = null,
-        protected ?string $retryDelay = null,
+        protected array $headers = [],
         ?bool $dispatchAfterCommit = false,
     ) {
         $this->dispatchAfterCommit = $dispatchAfterCommit;
@@ -113,11 +111,12 @@ class QStashQueue extends Queue implements QueueContract
      *
      * @param  string  $payload
      * @param  string|null  $queue
+     * @param  array{delay?: \DateTimeInterface|\DateInterval|int}  $options
      * @return string
      */
     public function pushRaw($payload, $queue = null, array $options = [])
     {
-        return $this->publish($payload, $this->getQueue($queue));
+        return $this->publish($payload, $this->getQueue($queue), $options['delay'] ?? 0);
     }
 
     /**
@@ -137,7 +136,7 @@ class QStashQueue extends Queue implements QueueContract
             $queue,
             $delay,
             function ($payload, $queue, $delay) {
-                return $this->publish($payload, $this->getQueue($queue), $delay);
+                return $this->pushRaw($payload, $queue, ['delay' => $delay]);
             }
         );
     }
@@ -167,7 +166,7 @@ class QStashQueue extends Queue implements QueueContract
             ['attempts' => $job->attempts()] + $job->payload(), JSON_UNESCAPED_UNICODE
         );
 
-        return $this->publish($payload, $queue, $delay);
+        return $this->pushRaw($payload, $queue, ['delay' => $delay]);
     }
 
     /**
@@ -182,17 +181,30 @@ class QStashQueue extends Queue implements QueueContract
     {
         return $this->http
             ->withToken($this->token)
-            ->withHeaders(array_filter([
-                'Upstash-Retries' => $this->retries,
-                'Upstash-Retry-Delay' => $this->retryDelay,
-            ], fn ($value) => ! is_null($value)))
-            ->when($delay, fn (PendingRequest $request) => $request->withHeaders([
-                'Upstash-Not-Before' => $this->availableAt($delay),
-            ]))
+            ->withHeaders($this->headersFor($payload, $delay))
             ->withBody($payload, 'application/json')
             ->post(rtrim($this->endpoint, '/').'/v2/publish/'.$this->destination($queue))
             ->throw()
             ->json('messageId');
+    }
+
+    /**
+     * Get the QStash headers for the given payload.
+     *
+     * QStash waits for as long as the job's timeout before considering a delivery
+     * failed, so long running jobs are not delivered again while still running.
+     *
+     * @param  \DateTimeInterface|\DateInterval|int  $delay
+     * @return array<string, mixed>
+     */
+    protected function headersFor(string $payload, $delay): array
+    {
+        $timeout = json_decode($payload, true)['timeout'] ?? null;
+
+        return array_filter([
+            'Upstash-Not-Before' => $delay ? $this->availableAt($delay) : null,
+            'Upstash-Timeout' => $timeout ? "{$timeout}s" : null,
+        ]) + $this->headers;
     }
 
     /**

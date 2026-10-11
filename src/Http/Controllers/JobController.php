@@ -6,6 +6,7 @@ use HeyJorgeDev\QstashLaravel\Jobs\QStashJob;
 use HeyJorgeDev\QstashLaravel\QStashQueue;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Contracts\Foundation\MaintenanceMode;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Queue\QueueManager;
@@ -21,6 +22,7 @@ class JobController
         protected Container $container,
         protected QueueManager $manager,
         protected ExceptionHandler $exceptions,
+        protected MaintenanceMode $maintenance,
     ) {
         //
     }
@@ -36,6 +38,15 @@ class JobController
     {
         /** @var QStashQueue $qstash */
         $qstash = $this->manager->connection($connection);
+
+        // Queue workers pause while the application is down for maintenance, so we
+        // will hand the job back to QStash to be delivered again in a minute. It
+        // is published unchanged, which means this does not count as an attempt.
+        if ($this->maintenance->active()) {
+            $qstash->pushRaw($request->getContent(), $queue, ['delay' => 60]);
+
+            return new Response(status: 204);
+        }
 
         $job = new QStashJob(
             $this->container,

@@ -18,6 +18,8 @@ class TestJob implements ShouldQueue
 
     public $backoff = 30;
 
+    public $timeout;
+
     public function __construct(public bool $fail = false)
     {
         //

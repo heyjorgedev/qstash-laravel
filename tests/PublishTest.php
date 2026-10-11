@@ -24,6 +24,8 @@ describe('when qstash accepts the message', function () {
                 && ! $request->hasHeader('Upstash-Not-Before')
                 && ! $request->hasHeader('Upstash-Retries')
                 && ! $request->hasHeader('Upstash-Retry-Delay')
+                && ! $request->hasHeader('Upstash-Timeout')
+                && ! $request->hasHeader('Upstash-Flow-Control-Key')
                 && $request['displayName'] === TestJob::class;
         });
     });
@@ -54,6 +56,45 @@ describe('when qstash accepts the message', function () {
 
         Http::assertSent(fn (Request $request) => $request->hasHeader('Upstash-Retries', '0')
             && $request->hasHeader('Upstash-Retry-Delay', 'pow(2, retried) * 1000'));
+    });
+
+    it('sends the timeout of the job', function () {
+        config(['queue.connections.qstash.timeout' => 30]);
+
+        Queue::push(new TestJob);
+
+        $job = new TestJob;
+        $job->timeout = 120;
+
+        Queue::push($job);
+
+        Http::assertSentInOrder([
+            fn (Request $request) => $request->hasHeader('Upstash-Timeout', '30s'),
+            fn (Request $request) => $request->hasHeader('Upstash-Timeout', '120s'),
+        ]);
+    });
+
+    it('sends the configured flow control', function () {
+        config(['queue.connections.qstash.flow_control' => [
+            'key' => 'podcasts',
+            'parallelism' => 5,
+            'rate' => 100,
+            'period' => 60,
+        ]]);
+
+        Queue::push(new TestJob);
+
+        Http::assertSent(fn (Request $request) => $request->hasHeader('Upstash-Flow-Control-Key', 'podcasts')
+            && $request->hasHeader('Upstash-Flow-Control-Value', 'parallelism=5, rate=100, period=60s'));
+    });
+
+    it('ignores flow control without a key', function () {
+        config(['queue.connections.qstash.flow_control' => ['key' => null, 'parallelism' => 5]]);
+
+        Queue::push(new TestJob);
+
+        Http::assertSent(fn (Request $request) => ! $request->hasHeader('Upstash-Flow-Control-Key')
+            && ! $request->hasHeader('Upstash-Flow-Control-Value'));
     });
 
     it('uses the configured endpoint and destination', function () {

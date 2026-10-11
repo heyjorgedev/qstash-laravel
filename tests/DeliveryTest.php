@@ -74,6 +74,23 @@ it('ignores connections that are not using qstash', function () {
     expect(TestJob::$handled)->toBeEmpty();
 });
 
+it('hands jobs back to qstash while the application is down', function () {
+    Carbon::setTestNow('2026-01-01 00:00:00');
+
+    config(['app.maintenance.driver' => 'cache', 'app.maintenance.store' => 'array']);
+
+    $this->app->maintenanceMode()->activate([]);
+
+    $this->get('/')->assertServiceUnavailable();
+
+    deliver($body = payload(new TestJob))->assertNoContent();
+
+    expect(TestJob::$handled)->toBeEmpty();
+
+    Http::assertSent(fn (Request $request) => $request->body() === $body
+        && $request->hasHeader('Upstash-Not-Before', (string) Carbon::now()->addMinute()->getTimestamp()));
+});
+
 it('releases failed jobs back onto qstash', function () {
     Carbon::setTestNow('2026-01-01 00:00:00');
 

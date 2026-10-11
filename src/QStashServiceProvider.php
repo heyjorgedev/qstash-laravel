@@ -4,6 +4,7 @@ namespace HeyJorgeDev\QstashLaravel;
 
 use HeyJorgeDev\QstashLaravel\Http\Controllers\JobController;
 use HeyJorgeDev\QstashLaravel\Http\Middleware\VerifySignature;
+use Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Queue\QueueManager;
 use Illuminate\Support\Facades\Route;
@@ -31,6 +32,8 @@ class QStashServiceProvider extends ServiceProvider
         });
 
         $this->registerRoutes();
+
+        PreventRequestsDuringMaintenance::except(trim(config('qstash.path'), '/').'/*');
 
         if ($this->app->runningInConsole()) {
             $this->publishes([
