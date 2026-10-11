@@ -34,6 +34,8 @@ class RecordDelivery implements ShouldQueue
         public string $path,
         public bool $fail = false,
         public bool $crash = false,
+        public int $sleep = 0,
+        public ?int $timeout = null,
     ) {
         //
     }
@@ -48,7 +50,12 @@ class RecordDelivery implements ShouldQueue
             'attempt' => $this->attempts(),
             'id' => $this->job->getJobId(),
             'queue' => $this->job->getQueue(),
+            'at' => microtime(true),
         ]);
+
+        if ($this->attempts() === 1) {
+            sleep($this->sleep);
+        }
 
         if ($this->fail) {
             throw new Exception('Job failed.');

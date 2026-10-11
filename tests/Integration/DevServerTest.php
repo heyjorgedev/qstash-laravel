@@ -8,6 +8,8 @@ use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 use Workbench\App\Jobs\RecordDelivery;
 
+use function Orchestra\Testbench\default_skeleton_path;
+
 uses()->group('integration');
 
 /*
@@ -33,8 +35,11 @@ beforeAll(function () use (&$servers) {
             'npx', '--yes', '@upstash/qstash-cli@2.40.12', 'dev', '-port', '18080',
         ]),
         'http://127.0.0.1:18001' => new Process([
-            PHP_BINARY, 'vendor/bin/testbench', 'serve', '--host=127.0.0.1', '--port=18001', '--no-reload',
-        ], dirname(__DIR__, 2)),
+            PHP_BINARY, '-S', '127.0.0.1:18001', '-t', default_skeleton_path('public'), default_skeleton_path('server.php'),
+        ], env: [
+            'PHP_CLI_SERVER_WORKERS' => 4,
+            'TESTBENCH_WORKING_PATH' => dirname(__DIR__, 2),
+        ]),
     ];
 
     foreach ($servers as $url => $server) {
@@ -52,6 +57,10 @@ beforeAll(function () use (&$servers) {
 
 afterAll(function () use (&$servers) {
     foreach ($servers as $server) {
+        // Neither the built-in PHP server nor npx stop the processes they started
+        // when they are stopped themselves, so we will stop those processes too.
+        Process::fromShellCommandline('pkill -P '.$server->getPid())->run();
+
         $server->stop();
     }
 });
@@ -71,8 +80,8 @@ afterEach(function () {
 it('delivers jobs to the application', function () {
     $id = Queue::connection('qstash-dev')->push(new RecordDelivery($this->path));
 
-    expect(deliveriesOf($this->path, 1))->toBe([
-        ['event' => 'attempt', 'attempt' => 1, 'id' => $id, 'queue' => 'default'],
+    expect(deliveriesOf($this->path, 1)[0])->toMatchArray([
+        'event' => 'attempt', 'attempt' => 1, 'id' => $id, 'queue' => 'default',
     ]);
 });
 
@@ -107,6 +116,30 @@ it('counts qstash redeliveries as attempts', function () {
 
     expect(array_column($deliveries, 'attempt'))->toBe([1, 2])
         ->and(array_column($deliveries, 'id'))->toBe([$id, $id]);
+});
+
+it('delivers jobs again once they exceed their timeout', function () {
+    Queue::connection('qstash-dev')->push(new RecordDelivery($this->path, sleep: 3, timeout: 1));
+
+    expect(array_column(deliveriesOf($this->path, 2), 'attempt'))->toBe([1, 2]);
+});
+
+it('limits the parallelism of deliveries using flow control', function () {
+    Queue::connection('qstash-dev-serial')->push(new RecordDelivery($this->path, sleep: 1));
+    Queue::connection('qstash-dev-serial')->push(new RecordDelivery($this->path, sleep: 1));
+
+    [$first, $second] = deliveriesOf($this->path, 2);
+
+    expect($second['at'] - $first['at'])->toBeGreaterThanOrEqual(1);
+});
+
+it('delivers jobs in parallel without flow control', function () {
+    Queue::connection('qstash-dev')->push(new RecordDelivery($this->path, sleep: 1));
+    Queue::connection('qstash-dev')->push(new RecordDelivery($this->path, sleep: 1));
+
+    [$first, $second] = deliveriesOf($this->path, 2);
+
+    expect($second['at'] - $first['at'])->toBeLessThan(1);
 });
 
 it('dispatches chained jobs from delivered jobs', function () {
